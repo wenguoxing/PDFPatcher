@@ -42,9 +42,9 @@ namespace PDFPatcher.Functions.Editor
 
 		internal sealed class Region
 		{
-			internal PagePosition Position { get; private set; }
-			internal string Text { get; private set; }
-			internal TextSource TextSource { get; private set; }
+			internal PagePosition Position { get; }
+			internal string Text { get; }
+			internal TextSource TextSource { get; }
 			internal string LiteralTextSource {
 				get {
 					switch (TextSource) {
@@ -71,20 +71,18 @@ namespace PDFPatcher.Functions.Editor
 		}
 		internal sealed class AutoBookmarkStyle
 		{
-			internal readonly string InternalFontName;
 			internal readonly string FontName;
 			internal readonly int FontSize;
-			internal readonly BookmarkSettings Style;
-			internal MatchPattern MatchPattern = null;
+			internal readonly BookmarkSettings Bookmark;
+			internal MatchPattern MatchPattern;
 
 			internal int Level;
 
-			public AutoBookmarkStyle(int level, string internalFontName, int fontSize) {
+			public AutoBookmarkStyle(int level, string fontName, int fontSize) {
 				Level = level;
-				InternalFontName = internalFontName;
-				FontName = PdfDocumentFont.RemoveSubsetPrefix(internalFontName);
+				FontName = fontName;
 				FontSize = fontSize;
-				Style = new BookmarkSettings();
+				Bookmark = new BookmarkSettings();
 			}
 		}
 	}

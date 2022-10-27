@@ -16,6 +16,7 @@ namespace PDFPatcher.Model
 		public bool IsBold { get; set; }
 		public bool IsItalic { get; set; }
 		public bool IsOpened { get; set; }
+		public bool GoToTop { get; set; }
 		public Color ForeColor { get; set; }
 
 		public BookmarkSettings() {
@@ -53,20 +54,26 @@ namespace PDFPatcher.Model
 		}
 
 		public void ReadXml(XmlReader reader) {
+			if (reader.Read() == false) {
+				return;
+			}
 			Title = reader.GetAttribute("title");
 			IsBold = reader.GetValue("bold", false);
 			IsItalic = reader.GetValue("italic", false);
 			IsOpened = reader.GetValue("opened", false);
-			ForeColor = Color.FromArgb(reader.GetValue("color", Color.Empty.ToArgb()));
+			GoToTop = reader.GetValue("goToTop", false);
+			string c = reader.GetAttribute("color");
+			ForeColor = c is null ? Color.Transparent : Color.FromArgb(c.ToInt32());
 		}
 
 		public void WriteXml(XmlWriter writer) {
 			writer.WriteStartElement("bookmark");
-			writer.WriteAttributeString("title", Title);
+			writer.WriteValue("title", Title, null);
 			writer.WriteValue("bold", IsBold, false);
 			writer.WriteValue("italic", IsItalic, false);
 			writer.WriteValue("opened", IsOpened, false);
-			writer.WriteValue("color", ForeColor.ToArgb(), Color.Empty.ToArgb());
+			writer.WriteValue("goToTop", GoToTop, false);
+			writer.WriteValue("color", ForeColor.ToArgb(), Color.Transparent.ToArgb());
 			writer.WriteEndElement();
 		}
 

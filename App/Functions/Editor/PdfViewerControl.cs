@@ -691,7 +691,7 @@ namespace PDFPatcher.Functions
 			lock (_mupdf.SyncObj) {
 				var page = _cache.LoadPage(position.Page);
 				var point = position.Location.ToPageCoordinate(page.VisualBound);
-				if (page.VisualBound.Contains(point) == false
+				if (page.Bound.Contains(point) == false
 					|| page.TextPage.BBox.Contains(point) == false) {
 					return ti;
 				}
@@ -699,11 +699,10 @@ namespace PDFPatcher.Functions
 					if (block.Type != ContentBlockType.Text || block.BBox.Contains(point) == false) {
 						continue;
 					}
-					var tb = block as MuTextBlock;
 					HashSet<IntPtr> s = null;
 					MuTextLine l = null;
 					List<MuTextLine> r = null;
-					foreach (var line in tb.Lines) {
+					foreach (var line in block.Lines) {
 						if (l == null) {
 							if (line.BBox.Contains(point) == false) {
 								continue;
@@ -718,7 +717,7 @@ namespace PDFPatcher.Functions
 							r.Add(l);
 						}
 						else {
-							if (line.BBox.Top - l.BBox.Bottom > line.BBox.Height) {
+							if (line.BBox.IsHorizontalNeighbor(rect) == false) {
 								break;
 							}
 							// 获取具有相同样式的邻接文本行
@@ -729,6 +728,7 @@ namespace PDFPatcher.Functions
 									goto NEXT;
 								}
 							}
+							rect = rect.Union(line.BBox);
 						}
 					NEXT:;
 					}

@@ -348,11 +348,11 @@ namespace PDFPatcher.Functions.Editor
 		internal EditModel.Region CopyText(Point cp, PagePosition pp) {
 			var v = View.Viewer;
 			var ps = v.IsClientPointInSelection(cp);
-			var lines = ps ? v.FindTextLines(v.GetSelectionPageRegion()) : v.FindTextLines(pp).TextLines;
+			var lines = ps ? v.FindTextLines(v.GetSelectionPageRegion()) : v.FindTextLines(pp).Lines;
 			string t = null;
 			EditModel.TextSource ts;
 			if (Model.InsertBookmarkWithOcrOnly == false && lines.HasContent()) {
-				var sb = new StringBuilder();
+				var sb = StringBuilderCache.Acquire();
 				var r = lines[0].BBox;
 				foreach (var line in lines) {
 					if (sb.Length > 100) {
@@ -366,7 +366,7 @@ namespace PDFPatcher.Functions.Editor
 					}
 					sb.Append(t);
 				}
-				t = sb.ToString();
+				t = StringBuilderCache.GetStringAndRelease(sb);
 				var b = v.MuRectangleToImageRegion(pp.Page, r);
 				v.SelectionRegion = b;
 				v.PinPoint = b.Location.Round();
@@ -385,7 +385,7 @@ namespace PDFPatcher.Functions.Editor
 					if (ps) {
 						var mr = r.FindAll((i) => i.Region.IntersectWith(ib));
 						if (mr.HasContent()) {
-							var sb = new StringBuilder();
+							var sb = StringBuilderCache.Acquire();
 							b = mr[0].Region;
 							foreach (var line in mr) {
 								t = OcrProcessor.CleanUpText(line.Text, v.OcrOptions);
@@ -396,7 +396,7 @@ namespace PDFPatcher.Functions.Editor
 								}
 								sb.Append(t);
 							}
-							t = sb.ToString();
+							t = StringBuilderCache.GetStringAndRelease(sb);
 						}
 					}
 					else {
@@ -559,7 +559,9 @@ namespace PDFPatcher.Functions.Editor
 				var p = pageNumber > 0 ? pageNumber : o.Page;
 				if (type == InsertBookmarkPositionType.NoDefined) {
 					var g = new UndoActionGroup();
-					g.SetAttribute(o, Constants.BookmarkAttributes.Title, t);
+					if (t.Length > 0) {
+						g.SetAttribute(o, Constants.BookmarkAttributes.Title, t);
+					}
 					g.SetAttribute(o, Constants.DestinationAttributes.Action, Constants.ActionType.Goto);
 					g.SetAttribute(o, Constants.DestinationAttributes.Page, p.ToText());
 					g.SetAttribute(o, Constants.DestinationAttributes.View, Constants.DestinationAttributes.ViewType.XYZ);
@@ -713,18 +715,20 @@ namespace PDFPatcher.Functions.Editor
 			}
 			foreach (var span in textInfo.Spans) {
 				var s = textInfo.Page.GetFont(span);
-				if (s != null) {
-					bool m = false;
-					int fs = span.Size.ToInt32();
-					foreach (var item in Model.TitleStyles) {
-						if (item.InternalFontName == s.Name && item.FontSize == fs) {
-							m = true;
-							goto NEXT;
-						}
+				if (s == null) {
+					continue;
+				}
+				var fn = PdfDocumentFont.RemoveSubsetPrefix(s.Name);
+				bool m = false;
+				int fs = span.Size.ToInt32();
+				foreach (var item in Model.TitleStyles) {
+					if (item.FontSize == fs && item.FontName == fn && item.MatchPattern == null) {
+						m = true;
+						goto NEXT;
 					}
-					if (m == false) {
-						Model.TitleStyles.Add(new EditModel.AutoBookmarkStyle(level, s.Name, fs));
-					}
+				}
+				if (m == false) {
+					Model.TitleStyles.Add(new EditModel.AutoBookmarkStyle(level, fn, fs));
 				}
 			NEXT:;
 			}
@@ -740,7 +744,7 @@ namespace PDFPatcher.Functions.Editor
 			f.SetValues(Model.TitleStyles);
 		}
 
-		internal void AutoBookmark(IEnumerable<EditModel.AutoBookmarkStyle> list, bool mergeAdjacentTitle) {
+		internal void AutoBookmark(IEnumerable<EditModel.AutoBookmarkStyle> list, bool mergeAdjacentTitle, bool keepExisting) {
 			View.Bookmark.CancelCellEdit();
 			var pdf = Model.PdfDocument;
 			BookmarkContainer bm = Model.Document.BookmarkRoot;
@@ -759,7 +763,9 @@ namespace PDFPatcher.Functions.Editor
 			foreach (XmlElement item in bm.SubBookmarks) {
 				ug.Add(new AddElementAction(item));
 			}
-			bm.RemoveAll();
+			if (keepExisting == false) {
+				bm.RemoveAll();
+			}
 			var spans = new List<MuPdfSharp.MuTextSpan>(3);
 			var bl = 0;
 			for (int i = 0; i < c;) {
@@ -777,10 +783,10 @@ namespace PDFPatcher.Functions.Editor
 										continue;
 									}
 									var t = span.Text;
-									var b = span.Box;
 									if (t.Length == 0) {
 										continue;
 									}
+									var b = span.Box;
 									if (bl < style.Level) {
 										if (matcher?.Matches(line.Text) == false) {
 											continue;
@@ -789,7 +795,7 @@ namespace PDFPatcher.Functions.Editor
 										++bl;
 									}
 									else if (bl == style.Level) {
-										// todo+ 删除重复的文本
+										// todo 删除重复的文本
 										var cb = bm as BookmarkElement;
 										var bb = h - cb.Bottom + dh;
 										var bt = h - cb.Top;
@@ -797,7 +803,7 @@ namespace PDFPatcher.Functions.Editor
 										var lb = b.Bottom;
 										if (cb.Page == p.PageNumber
 											&& (bb >= lt && bb <= lb || bt >= lt && bt <= lb || bt < lt && bb > lb)
-											&& (mergeAdjacentTitle || spans.Count == 1 || spans[spans.Count - 1].Point.Y == span.Point.Y)) {
+											&& (mergeAdjacentTitle || spans[spans.Count - 1].Point.Y == span.Point.Y)) {
 											//var m = false;
 											//var bs = b.Size.Area();
 											//foreach (var ss in spans) {
@@ -844,23 +850,23 @@ namespace PDFPatcher.Functions.Editor
 										bm = CreateNewSiblingBookmarkForParent(bm, spans);
 									}
 									var be = bm as BookmarkElement;
-									be.Title = t;
-									be.Top = h - b.Top + b.Height + dh;
-									be.Bottom = h - b.Bottom + dh;
-									be.Action = Constants.ActionType.Goto;
-									be.Page = p.PageNumber;
-									var s = style.Style;
+									var s = style.Bookmark;
 									if (s.IsBold || s.IsItalic) {
 										be.TextStyle = s.IsBold && s.IsItalic ? FontStyle.Bold | FontStyle.Italic
 											: s.IsBold ? FontStyle.Bold
 											: s.IsItalic ? FontStyle.Italic
 											: FontStyle.Regular;
 									}
+									be.Title = t;
+									be.Top = s.GoToTop ? h + dh : h - b.Top + b.Height + dh;
+									be.Bottom = h - b.Bottom + dh;
+									be.Action = Constants.ActionType.Goto;
+									be.Page = p.PageNumber;
 									if (s.IsOpened) {
 										be.IsOpen = true;
 									}
 									be.ForeColor = s.ForeColor;
-									//todo+ 删除尾随的空格
+									//todo 删除尾随的空格
 									ug.Add(new RemoveElementAction(bm));
 									spans.Add(span);
 									break;

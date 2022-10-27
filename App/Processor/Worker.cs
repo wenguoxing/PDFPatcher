@@ -268,7 +268,7 @@ namespace PDFPatcher.Processor
 				var xInfoDoc = infoDoc as PdfInfoXmlDocument;
 				var docPath = infoDoc as string;
 				if (xInfoDoc != null) {
-					import = new DocInfoImporter(options, pdf, pdfSettings, xInfoDoc.BookmarkRoot);
+					import = new DocInfoImporter(options, pdf, pdfSettings, xInfoDoc);
 				}
 				else if (String.IsNullOrEmpty(docPath)) {
 					Tracker.TraceMessage("没有指定信息文件，将按程序界面的设置执行补丁。");
@@ -379,8 +379,10 @@ namespace PDFPatcher.Processor
 					if (options.ImportPageLinks || pdfSettings.UnifiedPageSettings.PaperSize.PaperName != PaperSize.AsPageSize/* sc*/) {
 						import.ImportPageLinks(pdf, st);
 					}
-					PdfDocumentCreator.ProcessInfoItem(import.InfoDoc.DocumentElement.SelectSingleNode(Constants.PageLink) as XmlElement, processors);
-					PdfDocumentCreator.ProcessInfoItem(import.InfoDoc.DocumentElement.SelectSingleNode(Constants.NamedDestination) as XmlElement, processors);
+					if (import.InfoDoc != null) {
+						PdfDocumentCreator.ProcessInfoItem(import.InfoDoc.DocumentElement.SelectSingleNode(Constants.PageLink) as XmlElement, processors);
+						PdfDocumentCreator.ProcessInfoItem(import.InfoDoc.DocumentElement.SelectSingleNode(Constants.NamedDestination) as XmlElement, processors);
+					}
 					XmlElement bookmarks = null;
 					if (options.ImportBookmarks && pdfSettings.RemoveBookmarks == false || xInfoDoc != null) {
 						Tracker.TraceMessage("导入书签。");
@@ -619,11 +621,11 @@ namespace PDFPatcher.Processor
 					}
 					if (bookmarks != null && bookmarks.HasChildNodes) {
 						Tracker.TraceMessage("写入文档书签。");
-						OutlineManager.WriteOutline(w, bookmarks, w.PageEmpty ? w.CurrentPageNumber - 1 : w.CurrentPageNumber);
+						OutlineManager.WriteOutline(w, bookmarks, w.GetPageCount());
 						w.ViewerPreferences = PdfWriter.PageModeUseOutlines;
 					}
 					Tracker.TraceMessage("写入文件索引。");
-					Tracker.TraceMessage(Tracker.Category.Alert, "生成文件：<<" + targetFile.ToString() + ">>。");
+					Tracker.TraceMessage(Tracker.Category.Alert, $"合并了 {creator.InputDocumentCount.ToText()} 个文件共 {w.GetPageCount()} 页到：<<" + targetFile.ToString() + ">>。");
 					w.Close();
 				}
 			}
@@ -659,7 +661,7 @@ namespace PDFPatcher.Processor
 				FormHelper.ErrorBox(Messages.InfoFileNameInvalid);
 				return;
 			}
-			bookmarkFile = FileHelper.MakePathRootedAndWithExtension(bookmarkFile, sourceFile, Ext.Xml, true);
+			bookmarkFile = FileHelper.MakePathRootedAndWithExtension(bookmarkFile, sourceFile, Ext.Xml, false);
 			Tracker.TraceMessage(Tracker.Category.OutputFile, bookmarkFile);
 
 			if (options.CreateBookmarkForFirstPage) {
@@ -750,7 +752,7 @@ namespace PDFPatcher.Processor
 				else if (new FilePath(bookmarkFile).HasExtension(Ext.Txt)) {
 					Tracker.TraceMessage(Tracker.Category.OutputFile, bookmarkFile);
 					Tracker.TraceMessage("输出简易信息文件：" + bookmarkFile);
-					using (TextWriter w = new StreamWriter(bookmarkFile, false, AppContext.Exporter.GetEncoding())) {
+					using (var w = new StreamWriter(bookmarkFile, false, AppContext.Exporter.GetEncoding())) {
 						DocInfoExporter.WriteDocumentInfoAttributes(w, sourceFile, r.NumberOfPages);
 						ocr.SetWriter(w);
 						ocr.PerformOcr();
@@ -759,7 +761,7 @@ namespace PDFPatcher.Processor
 				else {
 					Tracker.TraceMessage(Tracker.Category.OutputFile, bookmarkFile);
 					Tracker.TraceMessage("输出信息文件：" + bookmarkFile);
-					using (XmlWriter w = XmlWriter.Create(bookmarkFile, DocInfoExporter.GetWriterSettings())) {
+					using (var w = XmlWriter.Create(bookmarkFile, DocInfoExporter.GetWriterSettings())) {
 						w.WriteStartDocument();
 						w.WriteStartElement(Constants.PdfInfo);
 						DocInfoExporter.WriteDocumentInfoAttributes(w, sourceFile, r.NumberOfPages);
@@ -840,15 +842,15 @@ namespace PDFPatcher.Processor
 						goto Exit;
 					}
 					else if (File.Exists(t)) {
-						var r = FormHelper.YesNoCancelBox("是否覆盖已存在的 PDF 文件：" + t);
-						if (r == DialogResult.No) {
-							goto Exit;
+						switch (FormHelper.YesNoCancelBox("是否覆盖已存在的 PDF 文件：" + t)) {
+							case DialogResult.No:
+								goto Exit;
+							case DialogResult.Cancel:
+								throw new OperationCanceledException();
+							default:
+								File.Delete(t);
+								break;
 						}
-						else if (r == DialogResult.Cancel) {
-							throw new OperationCanceledException();
-						}
-						// r == DialogResult.Yes
-						File.Delete(t);
 					}
 					if (Directory.Exists(Path.GetDirectoryName(t)) == false) {
 						Directory.CreateDirectory(Path.GetDirectoryName(t));
@@ -886,6 +888,10 @@ namespace PDFPatcher.Processor
 				Tracker.TraceMessage(Tracker.Category.Error, "信息文件路径无效。");
 				return;
 			}
+			if (FileHelper.HasExtension(infoFile, Ext.Xml) == false) {
+				Tracker.TraceMessage(Tracker.Category.Error, "信息文件不是 XML 文件，只有扩展名为 XML 的识别结果文件才能写入 PDF 文档。");
+				return;
+			}
 			Tracker.TraceMessage(Tracker.Category.InputFile, sourceFile);
 			Tracker.TraceMessage(Tracker.Category.OutputFile, targetFile);
 			if (FileHelper.ComparePath(sourceFile, targetFile)) {
@@ -902,7 +908,7 @@ namespace PDFPatcher.Processor
 			try {
 				using (var infoReader = XmlReader.Create(infoFile, new XmlReaderSettings() { IgnoreComments = true, IgnoreProcessingInstructions = true })) {
 					infoReader.MoveToContent(); // 移到根元素
-					using (Stream s = new FileStream(targetFile, FileMode.Create)) {
+					using (var s = new FileStream(targetFile, FileMode.Create)) {
 						var st = new PdfStamper(pdf, s);
 						var en = new PdfProcessingEngine(pdf);
 						en.ExtraData[DocProcessorContext.OcrData] = infoReader;

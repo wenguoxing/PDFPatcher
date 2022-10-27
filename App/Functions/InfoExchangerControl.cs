@@ -18,14 +18,15 @@ namespace PDFPatcher.Functions
 
 		public override string FunctionName => "导出导入信息文件";
 
-		public override System.Drawing.Bitmap IconImage => Properties.Resources.CreateDocument;
+		public override System.Drawing.Bitmap IconImage => Properties.Resources.ExportInfoFile;
 
 		public InfoExchangerControl() {
 			InitializeComponent();
+			this.OnFirstLoad(OnLoad);
 		}
 
-		void PatcherControl_OnLoad(object sender, EventArgs e) {
-			//this.Icon = Common.FormHelper.ToIcon (Properties.Resources.CreateDocument);
+		void OnLoad() {
+			_MainToolbar.ScaleIcons(16);
 			_ItemList.ListViewItemSorter = new ListViewItemComparer(0);
 
 			AppContext.MainForm.SetTooltip(_BookmarkControl.FileList, "需要导出或导入的信息文件路径");
@@ -76,9 +77,10 @@ namespace PDFPatcher.Functions
 			//	}
 			//};
 			_ItemList.FixEditControlWidth();
+			_ItemList.ScaleColumnWidths();
 			_listHelper = new FileListHelper(_ItemList);
 			_listHelper.SetupDragAndDrop(AddFiles);
-			FileListHelper.SetupCommonPdfColumns(_AuthorColumn, _KeywordsColumn, _SubjectColumn, _TitleColumn, _PageCountColumn, _NameColumn, _FolderColumn);
+			FileListHelper.SetupCommonPdfColumns(_AuthorColumn, _KeywordsColumn, _SubjectColumn, _TitleColumn, _PageCountColumn, _NameColumn, _FolderColumn, _FileTimeColumn);
 			_RefreshInfoButton.ButtonClick += (s, args) => _listHelper.RefreshInfo(AppContext.Encodings.DocInfoEncoding);
 			_RefreshInfoButton.DropDown = _RefreshInfoMenu;
 			foreach (var item in Constants.Encoding.EncodingNames) {

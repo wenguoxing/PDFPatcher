@@ -20,6 +20,7 @@
     <RunPostBuildEvent>OnOutputUpdated</RunPostBuildEvent>
     <NuGetPackageImportStamp>
     </NuGetPackageImportStamp>
+    <TargetFrameworkProfile />
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|x86' ">
     <DebugSymbols>true</DebugSymbols>
@@ -31,6 +32,7 @@
     <ErrorReport>prompt</ErrorReport>
     <UseVSHostingProcess>false</UseVSHostingProcess>
     <LangVersion>latest</LangVersion>
+    <Prefer32Bit>false</Prefer32Bit>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|x86' ">
     <OutputPath>..\bin\Release\</OutputPath>
@@ -42,6 +44,7 @@
     <UseVSHostingProcess>false</UseVSHostingProcess>
     <ErrorReport>prompt</ErrorReport>
     <LangVersion>latest</LangVersion>
+    <Prefer32Bit>false</Prefer32Bit>
   </PropertyGroup>
   <PropertyGroup>
     <ApplicationManifest>Common\app.manifest</ApplicationManifest>
@@ -68,6 +71,9 @@
     <Reference Include="itextsharp">
       <HintPath>Lib\itextsharp.dll</HintPath>
     </Reference>
+    <Reference Include="JacksonSoft.CustomTabControl">
+      <HintPath>Lib\JacksonSoft.CustomTabControl.dll</HintPath>
+    </Reference>
     <Reference Include="ObjectListView, Version=2.9.1.1072, Culture=neutral, PublicKeyToken=b1c5bf581481bcd4, processorArchitecture=MSIL">
       <HintPath>..\packages\ObjectListView.Official.2.9.1\lib\net20\ObjectListView.dll</HintPath>
     </Reference>
@@ -79,16 +85,9 @@
     <Reference Include="System.Drawing" />
     <Reference Include="System.Windows.Forms" />
     <Reference Include="System.XML" />
-    <Reference Include="TradeWright.TabControlExtra">
-      <HintPath>Lib\TradeWright.TabControlExtra.dll</HintPath>
-    </Reference>
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="ChineseCharMap.Designer.cs">
-      <AutoGen>True</AutoGen>
-      <DesignTime>True</DesignTime>
-      <DependentUpon>ChineseCharMap.resx</DependentUpon>
-    </Compile>
+    <Compile Include="Common\StringBuilderCache.cs" />
     <Compile Include="Configuration.Designer.cs">
       <AutoGen>True</AutoGen>
       <DesignTime>True</DesignTime>
@@ -111,12 +110,6 @@
     </Compile>
     <Compile Include="Functions\DocumentOption\FontCharSubstitutionForm.Designer.cs">
       <DependentUpon>FontCharSubstitutionForm.cs</DependentUpon>
-    </Compile>
-    <Compile Include="Functions\Editor\AddBookmarkConditionForm.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Include="Functions\Editor\AddBookmarkConditionForm.Designer.cs">
-      <DependentUpon>AddBookmarkConditionForm.cs</DependentUpon>
     </Compile>
     <Compile Include="Functions\Editor\Commands\BookmarkActionCommand.cs" />
     <Compile Include="Functions\Editor\Commands\BookmarkLevelCommand.cs" />
@@ -152,6 +145,7 @@
       <SubType>Component</SubType>
     </Compile>
     <Compile Include="Options\ImageExtracterOptions.cs" />
+    <Compile Include="Options\WindowStatus.cs" />
     <Compile Include="Processor\ContentProcessors\RemoveFormProcessor.cs" />
     <Compile Include="Processor\ContentProcessors\RemoveEmptyCommandProcessor.cs" />
     <Compile Include="Processor\ContentProcessors\RemoveWrappedCommandProcessor.cs" />
@@ -193,6 +187,7 @@
     <Compile Include="Functions\IDocumentEditor.cs" />
     <Compile Include="Options\ToolbarOptions.cs" />
     <Compile Include="Processor\Imaging\BitmapHelper.cs" />
+    <Compile Include="Processor\InfoXmlProcessors\ChangePageCoordinateProcessor.cs" />
     <Compile Include="Processor\InfoXmlProcessors\ClearDestinationOffsetProcessor.cs" />
     <Compile Include="Processor\MuPdf\MuDocumentInfo.cs" />
     <Compile Include="Processor\MuPdf\MuHandle.cs" />
@@ -689,19 +684,12 @@
     <Compile Include="Processor\Worker.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
-    <EmbeddedResource Include="ChineseCharMap.resx">
-      <Generator>ResXFileCodeGenerator</Generator>
-      <LastGenOutput>ChineseCharMap.Designer.cs</LastGenOutput>
-    </EmbeddedResource>
     <EmbeddedResource Include="Configuration.resx">
       <Generator>ResXFileCodeGenerator</Generator>
       <LastGenOutput>Configuration.Designer.cs</LastGenOutput>
-		</EmbeddedResource>
+    </EmbeddedResource>
     <EmbeddedResource Include="Functions\DocumentOption\FontCharSubstitutionForm.resx">
       <DependentUpon>FontCharSubstitutionForm.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="Functions\Editor\AddBookmarkConditionForm.resx">
-      <DependentUpon>AddBookmarkConditionForm.cs</DependentUpon>
     </EmbeddedResource>
     <EmbeddedResource Include="Functions\Editor\AutoBookmarkForm.resx">
       <DependentUpon>AutoBookmarkForm.cs</DependentUpon>
@@ -737,6 +725,7 @@
     </EmbeddedResource>
     <EmbeddedResource Include="Functions\EditorControl.resx">
       <DependentUpon>EditorControl.cs</DependentUpon>
+      <SubType>Designer</SubType>
     </EmbeddedResource>
     <EmbeddedResource Include="Functions\DocumentOption\DocumentInfoEditor.resx">
       <DependentUpon>DocumentInfoEditor.cs</DependentUpon>
@@ -885,6 +874,8 @@
     <Content Include="..\更新历史.txt">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
+    <None Include="Resources\clock.png" />
+    <None Include="Resources\arrow-continue-090.png" />
     <None Include="Common\app.manifest" />
     <None Include="donation.png" />
     <Content Include="Functions\AboutPage.html">
@@ -1052,6 +1043,7 @@
   </Target>
   <Target Name="CopyCustomContent" AfterTargets="BeforeBuild">
     <Copy SourceFiles="Lib\MuPDFLib.dll" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="Lib\FreeImage.dll" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true" />
   </Target>
   <PropertyGroup>
     <PostBuildEvent>

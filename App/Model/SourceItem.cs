@@ -9,12 +9,15 @@ namespace PDFPatcher.Model
 {
 	public abstract class SourceItem
 	{
-		public FilePath FilePath { get; private set; }
-		public string FileName { get; private set; }
-		public string FolderName { get; private set; }
+		List<SourceItem> _Items;
+
+		public FilePath FilePath { get; }
+		public string FileName { get; }
+		public string FolderName { get; }
 		public BookmarkSettings Bookmark { get; set; }
 		public int PageCount { get; private set; }
 		public abstract int FileSize { get; }
+		public abstract DateTime FileTime { get; }
 		public List<SourceItem> Items {
 			get {
 				if (_Items == null) {
@@ -40,6 +43,39 @@ namespace PDFPatcher.Model
 			}
 		}
 
+		public void SortItems(SortType options, bool recursive) {
+			if (_Items.HasContent() == false) {
+				return;
+			}
+			switch (options) {
+				case SortType.Literal:
+					_Items.Sort((x, y) => String.Compare(x.FilePath, y.FilePath, StringComparison.OrdinalIgnoreCase));
+					break;
+				case SortType.NumericAwareSort:
+					_Items.Sort((x, y) => FileHelper.NumericAwareComparePath(x.FilePath, y.FilePath));
+					break;
+				case SortType.CajSort:
+					if (CajSort(_Items) == false) {
+						goto case SortType.NumericAwareSort;
+					}
+					break;
+				case SortType.FileTime:
+					_Items.Sort((x, y) => x.FileTime.CompareTo(y.FileTime));
+					break;
+				case SortType.Reverse:
+					_Items.Reverse();
+					break;
+			}
+			if (recursive == false) {
+				return;
+			}
+			foreach (var item in _Items) {
+				if (item._Items.HasContent()) {
+					item.SortItems(options, recursive);
+				}
+			}
+		}
+
 		public abstract SourceItem Clone();
 
 		public override string ToString() {
@@ -50,6 +86,15 @@ namespace PDFPatcher.Model
 		{
 			Empty, Pdf, Image, Folder
 		}
+		public enum SortType {
+			Undefined,
+			Literal,
+			NumericAwareSort,
+			CajSort,
+			FileTime,
+			Reverse
+		}
+
 		/// <summary>
 		/// 创建新的空白页。
 		/// </summary>
@@ -79,10 +124,7 @@ namespace PDFPatcher.Model
 				try {
 					var reader = Processor.PdfHelper.OpenPdfFile(path.ToString(), true, false);
 					var c = reader.NumberOfPages;
-					string r = null;
-					if (refresh) {
-						r = new PageRange(1, c).ToString();
-					}
+					string r = refresh ? new PageRange(1, c).ToString() : null;
 					var info = Processor.DocInfoExporter.RewriteDocInfoWithEncoding(reader, AppContext.Encodings.DocInfoEncoding);
 					reader.Close();
 					return new Pdf(path, r, c, info);
@@ -91,10 +133,10 @@ namespace PDFPatcher.Model
 					FormHelper.ErrorBox(String.Concat("找不到文件：“", path, "”。"));
 				}
 				catch (Exception) {
-					FormHelper.ErrorBox(String.Concat("打开 PDF 文件时“", path, "”出错。"));
+					FormHelper.ErrorBox(String.Concat("打开 PDF 文件“", path, "”时出错。"));
 					// ignore corrupted 
 				}
-				return null;
+				return Create();
 			}
 			if (path.HasExtension(Constants.FileExtensions.AllSupportedImageExtension)) {
 				return new Image(path);
@@ -110,7 +152,7 @@ namespace PDFPatcher.Model
 				//}
 			}
 			FormHelper.ErrorBox(String.Concat("不支持文件“", path, "”。"));
-			return null;
+			return Create();
 		}
 
 		internal string GetInfoFileName() {
@@ -131,19 +173,19 @@ namespace PDFPatcher.Model
 		}
 
 		internal string GetTargetPdfFileName(string targetPath) {
-			string targetFolder = null;
-			var m = FileHelper.HasFileNameMacro(targetPath);   // 包含替换符
-			if (m == false) {
-				targetFolder = Path.GetDirectoryName(targetPath);
-			}
-			return m ? targetPath : FileHelper.CombinePath(targetFolder, FilePath.FileName);
+			return FileHelper.HasFileNameMacro(targetPath)
+				? targetPath
+				: FileHelper.CombinePath(Path.GetDirectoryName(targetPath), FilePath.FileName);
 		}
 
 		internal sealed class Empty : SourceItem
 		{
+			readonly DateTime _Time = DateTime.Now;
+
 			public override ItemType Type => ItemType.Empty;
 
 			public override int FileSize => 0;
+			public override DateTime FileTime => _Time;
 
 			public void SetPageCount(int pageCount) {
 				PageCount = pageCount;
@@ -178,48 +220,39 @@ namespace PDFPatcher.Model
 				return Top == i.Top && Bottom == i.Bottom && Left == i.Left && Right == i.Right &&
 					MinHeight == i.MinHeight && MinWidth == i.MinWidth;
 			}
-			public void CopyTo(CropOptions target) {
-				target.Top = Top;
-				target.Bottom = Bottom;
-				target.Left = Left;
-				target.Right = Right;
-				target.MinWidth = MinWidth;
-				target.MinHeight = MinHeight;
+			public CropOptions Clone() {
+				return (CropOptions)MemberwiseClone();
 			}
 		}
 
 		internal sealed class Image : SourceItem
 		{
+			readonly int _FileSize = -1;
+			readonly DateTime _FileTime;
+
 			public Image(FilePath path)
 				: base(path, 0) {
 				Cropping = new CropOptions();
-				if (path.ExistsFile) {
-					_FileSize = GetFileKB(path);
-				}
+				GetFileInfo(path, out _FileSize, out _FileTime);
 			}
 
 			public CropOptions Cropping { get; set; }
 			public override ItemType Type => ItemType.Image;
-			public override int FileSize {
-				get {
-					if (_FileSize == -1) {
-						_FileSize = GetFileKB(FilePath);
-					}
-					return _FileSize;
-				}
-			}
+			public override int FileSize => _FileSize;
+			public override DateTime FileTime => _FileTime;
 
 			public override SourceItem Clone() {
-				var n = new Image(FilePath);
-				Cropping.CopyTo(n.Cropping);
-				return n;
+				return new Image(FilePath) {
+					Cropping = Cropping.Clone()
+				};
 			}
-
-			int _FileSize = -1;
 		}
 
 		internal sealed class Pdf : SourceItem
 		{
+			int _FileSize = -1;
+			DateTime _FileTime;
+
 			public Pdf(FilePath path, string pageRanges, int pageCount, Model.GeneralInfo docInfo)
 				: base(path, pageCount) {
 				PageRanges = pageRanges;
@@ -232,6 +265,7 @@ namespace PDFPatcher.Model
 					MinWidth = 50,
 					MinHeight = 50
 				};
+				GetFileInfo(path, out _FileSize, out _FileTime);
 			}
 
 			public Pdf(FilePath path) : base(path, 0) {
@@ -243,14 +277,8 @@ namespace PDFPatcher.Model
 			public ImageExtracterOptions ExtractImageOptions { get; private set; }
 			public Model.GeneralInfo DocInfo { get; private set; }
 			public override ItemType Type => ItemType.Pdf;
-			public override int FileSize {
-				get {
-					if (_FileSize == -1) {
-						_FileSize = GetFileKB(FilePath);
-					}
-					return _FileSize;
-				}
-			}
+			public override int FileSize => _FileSize;
+			public override DateTime FileTime => _FileTime;
 
 			public void Refresh(Encoding encoding) {
 				Refresh(FilePath.ToString(), encoding);
@@ -270,13 +298,15 @@ namespace PDFPatcher.Model
 				return n;
 			}
 
-			int _FileSize = -1;
 			private void Refresh(string path, Encoding encoding) {
 				try {
-					using (var reader = Processor.PdfHelper.OpenPdfFile(path, true, false)) {
-						DocInfo = Processor.DocInfoExporter.RewriteDocInfoWithEncoding(reader, encoding);
-						PageCount = reader.NumberOfPages;
-						PageRanges = new PageRange(1, PageCount).ToString();
+					GetFileInfo(path, out _FileSize, out _FileTime);
+					if (_FileSize > 0) {
+						using (var reader = Processor.PdfHelper.OpenPdfFile(path, true, false)) {
+							DocInfo = Processor.DocInfoExporter.RewriteDocInfoWithEncoding(reader, encoding);
+							PageCount = reader.NumberOfPages;
+							PageRanges = new PageRange(1, PageCount).ToString();
+						}
 					}
 				}
 				catch (Exception) {
@@ -288,7 +318,13 @@ namespace PDFPatcher.Model
 
 		internal sealed class Folder : SourceItem
 		{
+			DateTime _FolderTime;
+
 			public Folder(string path) : base(path, 0) {
+				var p = new FilePath(path);
+				if (p.ExistsDirectory) {
+					_FolderTime = p.ToDirectoryInfo().LastWriteTime;
+				}
 			}
 			public Folder(string path, bool loadSubItems)
 				: this(path) {
@@ -300,6 +336,7 @@ namespace PDFPatcher.Model
 			public override ItemType Type => ItemType.Folder;
 
 			public override int FileSize => 0;
+			public override DateTime FileTime => _FolderTime;
 
 			public void Reload() {
 				Items.Clear();
@@ -309,12 +346,17 @@ namespace PDFPatcher.Model
 
 				var p = FilePath.ToString();
 				var l = Items;
-				if (AppContext.Merger.SubFolderBeforeFiles) {
-					AddSubDirectories(p, l);
-					AddFiles(p, l);
-				}
-				else {
-					AddSubDirectoriesAndFiles(p, l);
+				switch (AppContext.Merger.SubFolder) {
+					case MergerOptions.SubFolderPosition.BeforeFiles:
+						AddSubDirectories(p, l);
+						AddFiles(p, l);
+						break;
+					case MergerOptions.SubFolderPosition.WithFiles:
+						AddSubDirectoriesAndFiles(p, l);
+						break;
+					case MergerOptions.SubFolderPosition.Exclude:
+						AddFiles(p, l);
+						break;
 				}
 			}
 
@@ -391,12 +433,16 @@ namespace PDFPatcher.Model
 			}
 		}
 
-		protected static int GetFileKB(FilePath fileName) {
+		protected static void GetFileInfo(FilePath fileName, out int kilobytes, out DateTime fileTime) {
 			if (fileName.ExistsFile == false) {
-				return 0;
+				kilobytes = 0;
+				fileTime = DateTime.MinValue;
 			}
-			var f = fileName.ToFileInfo();
-			return (int)Math.Ceiling((double)(f.Length >> 10));
+			else {
+				var f = fileName.ToFileInfo();
+				kilobytes = (int)(f.Length >> 10);
+				fileTime = f.LastWriteTime;
+			}
 		}
 
 		protected virtual void CopyProperties(SourceItem target) {
@@ -411,26 +457,24 @@ namespace PDFPatcher.Model
 			}
 			target.PageCount = PageCount;
 		}
-
-		List<SourceItem> _Items;
 		static BookmarkSettings CreateBookmarkSettings(string t) {
 			if (AppContext.Merger.CajSort && t.Length == 6) {
 				if (MatchCajPattern(t, Constants.CajNaming.Cover)) {
-					return t.EndsWith("001") ? new BookmarkSettings("封面")
-						: t.EndsWith("002") ? new BookmarkSettings("封底")
+					return t.EndsWith("001", StringComparison.Ordinal) ? new BookmarkSettings("封面")
+						: t.EndsWith("002", StringComparison.Ordinal) ? new BookmarkSettings("封底")
 						: null; // 超过2页的，只为第一页和第二页生成书签
 				}
 				else if (MatchCajPattern(t, Constants.CajNaming.TitlePage)) {
-					return t.EndsWith("001") ? new BookmarkSettings("书名") : null;
+					return t.EndsWith("001", StringComparison.Ordinal) ? new BookmarkSettings("书名") : null;
 				}
 				else if (MatchCajPattern(t, Constants.CajNaming.CopyrightPage)) {
-					return t.EndsWith("001") ? new BookmarkSettings("版权") : null;
+					return t.EndsWith("001", StringComparison.Ordinal) ? new BookmarkSettings("版权") : null;
 				}
 				else if (MatchCajPattern(t, Constants.CajNaming.Foreword)) {
-					return t.EndsWith("001") ? new BookmarkSettings("前言") : null;
+					return t.EndsWith("001", StringComparison.Ordinal) ? new BookmarkSettings("前言") : null;
 				}
 				else if (MatchCajPattern(t, Constants.CajNaming.Contents)) {
-					return t.EndsWith("00001") ? new BookmarkSettings("目录") : null;
+					return t.EndsWith("00001", StringComparison.Ordinal) ? new BookmarkSettings("目录") : null;
 				}
 				else if (MatchCajPattern(t, String.Empty) && t == "000001") {
 					return new BookmarkSettings("正文");
@@ -512,16 +556,67 @@ namespace PDFPatcher.Model
 			return false;
 		}
 
-		static BookmarkSettings CreateCajBookmark(string text, string pattern, string title) {
-			if (MatchCajPattern(text, pattern) && text.EndsWith("001")) {
-				if (text.EndsWith("001")) {
-					return new BookmarkSettings(title);
+		static bool CajSort(List<SourceItem> fileList) {
+			var m = false; // match Caj naming
+			var cov = new List<SourceItem>(1);
+			var bok = new List<SourceItem>(2);
+			var leg = new List<SourceItem>(1);
+			var fow = new List<SourceItem>(3);
+			var cnt = new List<SourceItem>(5);
+			var body = new List<SourceItem>(fileList.Count);
+			foreach (var file in fileList) {
+				var path = file.FilePath;
+				var f = Path.GetFileNameWithoutExtension(path);
+				if (f.Length == 6) {
+					if (MatchCajPatternAddPath(file, f, Constants.CajNaming.Cover, cov)
+						|| MatchCajPatternAddPath(file, f, Constants.CajNaming.TitlePage, bok)
+						|| MatchCajPatternAddPath(file, f, Constants.CajNaming.CopyrightPage, leg)
+						|| MatchCajPatternAddPath(file, f, Constants.CajNaming.Foreword, fow)
+						|| MatchCajPatternAddPath(file, f, Constants.CajNaming.Contents, cnt)
+						) {
+						m = true;
+						continue;
+					}
 				}
-				else {
-					return null;
-				}
+				body.Add(file);
 			}
-			return new BookmarkSettings(text);
+			if (m == false) {
+				return false;
+			}
+			cov.Sort(CompareFilePath);
+			bok.Sort(CompareFilePath);
+			leg.Sort(CompareFilePath);
+			fow.Sort(CompareFilePath);
+			cnt.Sort(CompareFilePath);
+			body.Sort(CompareFilePath);
+			fileList.Clear();
+			if (cov.Count == 2) {
+				fileList.Add(cov[0]);
+			}
+			else {
+				fileList.AddRange(cov);
+			}
+			fileList.AddRange(bok);
+			fileList.AddRange(leg);
+			fileList.AddRange(fow);
+			fileList.AddRange(cnt);
+			fileList.AddRange(body);
+			if (cov.Count == 2) {
+				fileList.Add(cov[1]);
+			}
+			return true;
+		}
+
+		static bool MatchCajPatternAddPath(SourceItem item, string text, string pattern, List<SourceItem> container) {
+			if (MatchCajPattern(text, pattern)) {
+				container.Add(item);
+				return true;
+			}
+			return false;
+		}
+
+		static int CompareFilePath(SourceItem x, SourceItem y) {
+			return String.Compare(x.FilePath, y.FilePath, StringComparison.OrdinalIgnoreCase);
 		}
 
 		static bool MatchCajPattern(string text, string pattern) {

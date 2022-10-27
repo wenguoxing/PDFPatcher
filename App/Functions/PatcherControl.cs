@@ -18,16 +18,22 @@ namespace PDFPatcher.Functions
 
 		public override string FunctionName => "批量修改文档";
 
-		public override System.Drawing.Bitmap IconImage => Properties.Resources.CreateDocument;
+		public override System.Drawing.Bitmap IconImage => Properties.Resources.DocumentProcessor;
 
 		public override Button DefaultButton => _ImportButton;
 
 		public PatcherControl() {
 			InitializeComponent();
+			this.OnFirstLoad(OnLoad);
 		}
 
-		void PatcherControl_OnLoad(object sender, EventArgs e) {
-			//this.Icon = Common.FormHelper.ToIcon (Properties.Resources.CreateDocument);
+		void OnLoad() {
+			_MainToolbar.ScaleIcons(16);
+			_ItemListMenu.ScaleIcons(16);
+			_RecentFileMenu.ScaleIcons(16);
+			_RefreshInfoMenu.ScaleIcons(16);
+			_SelectionMenu.ScaleIcons(16);
+			_SortMenu.ScaleIcons(16);
 
 			AppContext.MainForm.SetTooltip(_ConfigButton, "点击此处设置 PDF 文件的修改方式选项");
 			AppContext.MainForm.SetTooltip(_ActionsBox, "双击项目编辑操作选项；右键点击项目弹出上下文菜单");
@@ -62,11 +68,12 @@ namespace PDFPatcher.Functions
 			});
 
 			_ItemList.FixEditControlWidth();
+			_ItemList.ScaleColumnWidths();
 			_ItemList.ListViewItemSorter = new ListViewItemComparer(0);
 			_listHelper = new FileListHelper(_ItemList);
 			_listHelper.SetupHotkeys();
 			_listHelper.SetupDragAndDrop(AddFiles);
-			FileListHelper.SetupCommonPdfColumns(_AuthorColumn, _KeywordsColumn, _SubjectColumn, _TitleColumn, _PageCountColumn, _NameColumn, _FolderColumn);
+			FileListHelper.SetupCommonPdfColumns(_AuthorColumn, _KeywordsColumn, _SubjectColumn, _TitleColumn, _PageCountColumn, _NameColumn, _FolderColumn, _FileTimeColumn);
 			_RefreshInfoButton.ButtonClick += (s, args) => _listHelper.RefreshInfo(AppContext.Encodings.DocInfoEncoding);
 			_RefreshInfoButton.DropDown = _RefreshInfoMenu;
 			foreach (var item in Constants.Encoding.EncodingNames) {

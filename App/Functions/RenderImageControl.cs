@@ -16,7 +16,10 @@ namespace PDFPatcher.Functions
 
 		public RenderImageControl() {
 			InitializeComponent();
-			//this.Icon = Common.FormHelper.ToIcon (Properties.Resources.RenderImage);
+			this.OnFirstLoad(OnLoad);
+		}
+
+		void OnLoad() {
 			_SourceFileControl.BrowseSelectedFiles += (object sender, EventArgs e) => {
 				if (_AutoOutputDirBox.Checked == false) {
 					return;
@@ -38,10 +41,7 @@ namespace PDFPatcher.Functions
 			};
 			_ExtractPageImageWidthBox.GotFocus += (s, args) => { _SpecificWidthBox.Checked = true; };
 			_ExtractPageRatioBox.GotFocus += (s, args) => { _SpecificRatioBox.Checked = true; };
-		}
 
-		protected override void OnLoad(EventArgs e) {
-			base.OnLoad(e);
 			ShowFileMaskPreview();
 			AppContext.MainForm.SetTooltip(_SourceFileControl.FileList, "包含图片的 PDF 文件路径");
 			AppContext.MainForm.SetTooltip(_TargetBox, "放置输出图片的文件夹路径");

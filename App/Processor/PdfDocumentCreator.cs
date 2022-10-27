@@ -34,25 +34,25 @@ namespace PDFPatcher.Processor
 				new PaperSize (PaperSize.AsNarrowestPage, 0, 0),
 				new PaperSize (PaperSize.AsLargestPage, 0, 0),
 				new PaperSize (PaperSize.AsSmallestPage, 0, 0),
-				new PaperSize ("16 开 (18.4*26.0)", 1840, 2601),
+				new PaperSize ("16 开 (18.4*26.0)", 1840, 2600),
 				new PaperSize ("32 开 (13.0*18.4)", 1300, 1840),
 				new PaperSize ("大 32 开 (14.0*20.3)", 1400, 2030),
 				new PaperSize ("A4 (21.0*29.7)", 2100, 2970),
-				new PaperSize ("A3 (29.7*42.0)", 2971, 4201),
+				new PaperSize ("A3 (29.7*42.0)", 2970, 4200),
 				new PaperSize ("自定义", 0, 0),
 				new PaperSize ("————————————", 0, 0),
-				new PaperSize ("8 开 (26.0*36.8)", 2601, 3681),
-				new PaperSize ("16 开 (18.4*26.0)", 1840, 2601),
-				new PaperSize ("大 16 开 (21.0*28.5)", 2100, 2851),
+				new PaperSize ("8 开 (26.0*36.8)", 2600, 3680),
+				new PaperSize ("16 开 (18.4*26.0)", 1840, 2600),
+				new PaperSize ("大 16 开 (21.0*28.5)", 2100, 2850),
 				new PaperSize ("32 开 (13.0*18.4)", 1300, 1840),
 				new PaperSize ("大 32 开 (14.0*20.3)", 1400, 2030),
-				new PaperSize ("8 K (27.3*39.3)", 2731, 3931),
-				new PaperSize ("16 K (19.6*27.3)", 1960, 2731),
+				new PaperSize ("8 K (27.3*39.3)", 2730, 3930),
+				new PaperSize ("16 K (19.6*27.3)", 1960, 2730),
 				new PaperSize ("A0 (84.1*118.9)", 8410, 11890),
 				new PaperSize ("A1 (59.4*84.1)", 5940, 8410),
 				new PaperSize ("A2 (42.0*59.4)", 4200, 5940),
-				new PaperSize ("A3 (29.7*42.0)", 2971, 4201),
-				new PaperSize ("A4 (21.0*29.7)", 2100, 2971),
+				new PaperSize ("A3 (29.7*42.0)", 2970, 4200),
+				new PaperSize ("A4 (21.0*29.7)", 2100, 2970),
 				new PaperSize ("A5 (14.8*21.0)", 1480, 2100),
 				new PaperSize ("A6 (10.5*14.8)", 1050, 1480),
 				new PaperSize ("B0 (100.0*141.3)", 10000, 14130),
@@ -60,11 +60,10 @@ namespace PDFPatcher.Processor
 				new PaperSize ("B2 (50.0*70.7)", 5000, 7070),
 				new PaperSize ("B3 (35.3*50.0)", 3530, 5000),
 				new PaperSize ("B4 (25.0*35.3)", 2500, 3530),
-				new PaperSize ("B5 (17.6*25.0)", 1760, 2501),
+				new PaperSize ("B5 (17.6*25.0)", 1760, 2500),
 				new PaperSize ("B6 (12.5*17.6)", 1250, 1760)
 			};
 		readonly MergerOptions _option;
-		readonly ImporterOptions _impOptions;
 		readonly Document _doc;
 		readonly PdfCopy _writer;
 		readonly PaperSize _content;
@@ -76,16 +75,18 @@ namespace PDFPatcher.Processor
 		readonly bool scaleUp, scaleDown;
 		readonly bool areMarginsEqual;
 		bool _portrait;
+		int _inputDocumentCount;
 
 		/// <summary>
 		/// 在传入构造函数选项中保留链接时，获取最近处理的 PDF 文档的书签。
 		/// </summary>
 		public PdfInfoXmlDocument PdfBookmarks { get; }
+		/// <summary>获取输入的文档数量。</summary>
+		public int InputDocumentCount => _inputDocumentCount;
 
 		public PdfDocumentCreator(DocumentSink sink, MergerOptions option, ImporterOptions impOptions, Document document, PdfCopy writer) {
 			_sink = sink;
 			_option = option;
-			_impOptions = impOptions;
 			_doc = document;
 			_writer = writer;
 			var ps = _pageSettings = option.PageSettings;
@@ -118,21 +119,22 @@ namespace PDFPatcher.Processor
 					Tracker.TraceMessage("添加空白页。");
 					AddEmptyPage();
 					SetBookmarkAction(b);
+					++_inputDocumentCount;
 					break;
 				case SourceItem.ItemType.Pdf:
 					Tracker.TraceMessage("添加文档：" + sourceFile);
 					AddPdfPages(sourceFile as SourceItem.Pdf, b);
 					Tracker.IncrementProgress(sourceFile.FileSize);
+					++_inputDocumentCount;
 					break;
 				case SourceItem.ItemType.Image:
 					Tracker.TraceMessage("添加图片：" + sourceFile);
 					AddImagePage(sourceFile, b);
 					Tracker.IncrementProgress(sourceFile.FileSize);
+					++_inputDocumentCount;
 					break;
 				case SourceItem.ItemType.Folder:
 					Tracker.TraceMessage("添加文件夹：" + sourceFile);
-					break;
-				default:
 					break;
 			}
 
@@ -165,7 +167,7 @@ namespace PDFPatcher.Processor
 			if (__BuiltInImageTypes.Contains(ext)) {
 				try {
 					using (var fi = new FreeImageBitmap(source.FilePath, (FREE_IMAGE_LOAD_FLAGS)0x0800/*仅加载图像尺寸信息*/)) {
-						if (fi.HasPalette) {
+						if (fi.HasPalette && fi.ImageFormat != FREE_IMAGE_FORMAT.FIF_JPEG && fi.ImageFormat != FREE_IMAGE_FORMAT.FIF_JP2) {
 							isIndexed = true;
 							goto ADVANCED_LOAD;
 						}
@@ -181,17 +183,17 @@ namespace PDFPatcher.Processor
 					return;
 				}
 				var cs = image.Additional?.GetAsArray(PdfName.COLORSPACE);
-				if (cs != null && cs.Size == 4 && PdfName.INDEXED.Equals(cs[0])) {
+				if (cs?.Size == 4 && PdfName.INDEXED.Equals(cs[0])) {
 					isIndexed = true;
 				}
 				else {
-					if (ext == Constants.FileExtensions.Jpg || ext == Constants.FileExtensions.Jpeg) {
-						if (Imaging.JpgHelper.TryGetExifOrientation(source.FilePath, out var o) && o != 0) {
-							switch (o) {
-								case 6: image.RotationDegrees = -90; break;
-								case 3: image.RotationDegrees = 180; break;
-								case 8: image.RotationDegrees = 90; break;
-							}
+					if ((ext == Constants.FileExtensions.Jpg || ext == Constants.FileExtensions.Jpeg)
+						&& Imaging.JpgHelper.TryGetExifOrientation(source.FilePath, out var o)
+						&& o != 0) {
+						switch (o) {
+							case 6: image.RotationDegrees = -90; break;
+							case 3: image.RotationDegrees = 180; break;
+							case 8: image.RotationDegrees = 90; break;
 						}
 					}
 					AddImage(image);
@@ -215,9 +217,7 @@ namespace PDFPatcher.Processor
 					}
 				}
 				finally {
-					if (fi != null) {
-						fi.Dispose();
-					}
+					fi?.Dispose();
 				}
 			}
 
@@ -233,13 +233,21 @@ namespace PDFPatcher.Processor
 		}
 
 		void AddEmptyPage() {
-			if (_content.SpecialSize == SpecialPaperSize.None || _content.SpecialSize == SpecialPaperSize.AsSpecificPage) {
-				// 插入空白页
-				_doc.NewPage();
-				_writer.PageEmpty = false;
-			}
-			else {
-				Tracker.TraceMessage("没有指定页面尺寸，无法插入空白页。");
+			switch (_content.SpecialSize) {
+				case SpecialPaperSize.None:
+				case SpecialPaperSize.AsSpecificPage:
+					// 插入空白页
+					_doc.NewPage();
+					_writer.PageEmpty = false;
+					break;
+				case SpecialPaperSize.AsPageSize:
+					if (_doc.PageSize.Width > 0) {
+						goto case SpecialPaperSize.AsSpecificPage;
+					}
+					break;
+				default:
+					Tracker.TraceMessage("没有指定页面尺寸，无法插入空白页。");
+					break;
 			}
 		}
 
@@ -354,7 +362,7 @@ namespace PDFPatcher.Processor
 					Tracker.IncrementProgress(1);
 				}
 			}
-
+			_doc.SetPageSize(pdf.GetPageNRelease(ranges[ranges.Count - 1].EndValue).GetPageVisibleRectangle());
 			if (_option.KeepBookmarks) {
 				bookmark = KeepBookmarks(bookmark, pdf, pageRemapper, cts);
 			}
@@ -394,11 +402,12 @@ namespace PDFPatcher.Processor
 				return bookmark;
 			}
 			if (bm != null) {
-				while (bm.FirstChild != null) {
-					if (bm.FirstChild.NodeType == XmlNodeType.Element) {
-						bookmark.AppendChild(bookmark.OwnerDocument.ImportNode(bm.FirstChild, true));
+				XmlNode c;
+				while ((c = bm.FirstChild) != null) {
+					if (c.NodeType == XmlNodeType.Element) {
+						bookmark.AppendChild(bookmark.OwnerDocument.ImportNode(c, true));
 					}
-					bm.RemoveChild(bm.FirstChild);
+					bm.RemoveChild(c);
 				}
 			}
 			return bookmark;
@@ -423,16 +432,6 @@ namespace PDFPatcher.Processor
 				}
 				if (c.ParentNode == null) {
 					// 节点在处理过程中被删除
-					//while (c.HasChildNodes) {
-					//    var cc = c.FirstChild as XmlElement;
-					//    if (cc == null ||
-					//        (cc.HasAttribute (Constants.DestinationAttributes.Action) == false
-					//            && cc.HasChildNodes == false)) {
-					//        c.RemoveChild (cc);
-					//        continue;
-					//    }
-					//    item.InsertAfter (cc, r);
-					//}
 					c = r != null ? r.NextSibling : item.FirstChild;
 				}
 				else {
@@ -490,7 +489,7 @@ namespace PDFPatcher.Processor
 					) {
 					return Image.GetInstance(sourceFile.FilePath.ToString());
 				}
-				if (ext == Constants.FileExtensions.Jpg || ext == ".jpeg") {
+				if (ext == Constants.FileExtensions.Jpg || ext == Constants.FileExtensions.Jpeg) {
 					// is JPEG file
 					var t = sourceFile.FilePath.EnsureExtension(Constants.FileExtensions.Jpg);
 					if (FreeImageBitmap.JPEGCrop(sourceFile.FilePath, t, cropOptions.Left, cropOptions.Top, fi.Width - cropOptions.Right, fi.Height - cropOptions.Bottom)) {
@@ -601,17 +600,18 @@ namespace PDFPatcher.Processor
 			else if (fi.ColorDepth > 8
 				&& fi.ColorType == FREE_IMAGE_COLOR_TYPE.FIC_RGB
 				&& fi.HasPalette == false
-				&& __JpgFormats.Contains(fi.PixelFormat)) {
+				&& __JpgFormats.Contains(fi.PixelFormat)
+				&& (fi.ImageFormat != FREE_IMAGE_FORMAT.FIF_TIFF || fi.InfoHeader.biCompression != 0)) {
 				format = FREE_IMAGE_FORMAT.FIF_JPEG;
-			}
-			else if (fi.InfoHeader.biCompression == FreeImage.BI_JPEG) {
-				format = FREE_IMAGE_FORMAT.FIF_JPEG;
-			}
-			else if (fi.ColorDepth > 16) {
-				format = FREE_IMAGE_FORMAT.FIF_PNG;
 			}
 			else if (fi.PixelFormat == PixelFormat.Format1bppIndexed && fi.ImageFormat != FREE_IMAGE_FORMAT.FIF_TIFF && recompressWithJbig2 == false) {
 				format = FREE_IMAGE_FORMAT.FIF_TIFF;
+			}
+			else if (fi.ColorDepth > 8) {
+				format = FREE_IMAGE_FORMAT.FIF_PNG;
+			}
+			else if (fi.InfoHeader.biCompression == FreeImage.BI_JPEG) {
+				format = FREE_IMAGE_FORMAT.FIF_JPEG;
 			}
 			else {
 				format = fi.ImageFormat;
@@ -648,8 +648,6 @@ namespace PDFPatcher.Processor
 			if (fi.HorizontalResolution != fi.VerticalResolution) {
 				image.SetDpi(fi.HorizontalResolution.ToInt32(), fi.VerticalResolution.ToInt32());
 			}
-			//image.ScaleAbsoluteHeight (fi.Height * 72 / fi.VerticalResolution);
-			//image.ScaleAbsoluteWidth (fi.Width * 72 / fi.HorizontalResolution);
 			return image;
 		}
 

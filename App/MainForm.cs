@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Drawing;
 using System.Windows.Forms;
 using PDFPatcher.Common;
 using PDFPatcher.Functions;
@@ -13,10 +14,11 @@ namespace PDFPatcher
 
 		ReportControl _LogControl;
 		#region 公共功能
-		private BackgroundWorker _Worker;
-		private readonly FormState _formState = new FormState();
-		private bool _FullScreen;
+		BackgroundWorker _Worker;
+		readonly FormState _formState = new FormState();
+		bool _FullScreen;
 		///<summary>获取或指定全屏显示的值。</summary>
+		[Browsable(false)]
 		public bool FullScreen {
 			get => _FullScreen;
 			set {
@@ -133,69 +135,38 @@ namespace PDFPatcher
 			}
 			switch (functionName) {
 				case Function.FrontPage:
-					__FunctionControls[functionName] = new FrontPageControl();
-					break;
+					return __FunctionControls[functionName] = new FrontPageControl();
 				case Function.Patcher:
-					__FunctionControls[functionName] = new PatcherControl();
-					break;
+					return __FunctionControls[functionName] = new PatcherControl();
 				case Function.Merger:
-					__FunctionControls[functionName] = new MergerControl();
-					break;
+					return __FunctionControls[functionName] = new MergerControl();
 				case Function.BookmarkGenerator:
-					__FunctionControls[functionName] = new AutoBookmarkControl();
-					break;
+					return __FunctionControls[functionName] = new AutoBookmarkControl();
 				case Function.InfoExchanger:
-					__FunctionControls[functionName] = new InfoExchangerControl();
-					break;
+					return __FunctionControls[functionName] = new InfoExchangerControl();
 				case Function.ExtractPages:
-					__FunctionControls[functionName] = new ExtractPageControl();
-					break;
+					return __FunctionControls[functionName] = new ExtractPageControl();
 				case Function.ExtractImages:
-					__FunctionControls[functionName] = new ExtractImageControl();
-					break;
-				case Function.BookmarkEditor:
-					//__FunctionControls[functionName] = new BookmarkEditorControl ();
-					//break;
+					return __FunctionControls[functionName] = new ExtractImageControl();
+				case Function.Editor:
 					var b = new EditorControl();
 					b.DocumentChanged += OnDocumentChanged;
 					return b;
-				//case FormHelper.Functions.InfoFileOptions:
-				//    __FunctionControls[functionName] = new InfoFileOptionControl ();
-				//    break;
 				case Function.Ocr:
-					__FunctionControls[functionName] = new OcrControl();
-					break;
+					return __FunctionControls[functionName] = new OcrControl();
 				case Function.RenderPages:
-					__FunctionControls[functionName] = new RenderImageControl();
-					break;
-				//case Form.Functions.ImportOptions:
-				//    __FunctionControls[functionName] = new ImportOptionControl ();
-				//    break;
-				//case FormHelper.Functions.Options:
-				//    __FunctionControls[functionName] = new AppOptionControl ();
-				//    break;
+					return __FunctionControls[functionName] = new RenderImageControl();
 				case Function.About:
-					__FunctionControls[functionName] = new AboutControl();
-					break;
-				//case FormHelper.Functions.Log:
-				//    __FunctionControls[functionName] = new ReportControl ();
-				//    break;
+					return __FunctionControls[functionName] = new AboutControl();
 				case Function.Inspector:
-					//__FunctionControls[functionName] = new DocumentInspectorControl ();
-					//break;
 					var d = new DocumentInspectorControl();
 					d.DocumentChanged += OnDocumentChanged;
 					return d;
 				case Function.Rename:
-					__FunctionControls[functionName] = new RenameControl();
-					break;
+					return __FunctionControls[functionName] = new RenameControl();
 				default:
 					return null;
-					//__FunctionControls[Form.Functions.Default] = new Label ();
-					//functionName = Form.Functions.Default;
-					//break;
 			}
-			return __FunctionControls[functionName];
 		}
 
 		void OnDocumentChanged(object sender, DocumentChangedEventArgs args) {
@@ -222,6 +193,7 @@ namespace PDFPatcher
 
 		public MainForm() {
 			InitializeComponent();
+			this.OnFirstLoad(OnLoad);
 		}
 
 		protected override void WndProc(ref Message m) {
@@ -232,26 +204,31 @@ namespace PDFPatcher
 			}
 		}
 
-		protected override void OnLoad(EventArgs e) {
-			base.OnLoad(e);
+		void OnLoad() {
 			Processor.PdfHelper.ToggleReaderDebugMode(true); // 打开容错模式
 			Processor.PdfHelper.ToggleUnethicalMode(true); // 打开强制读取加密文档模式
 
+			bool firstLoad;
 			try {
-				AppContext.Load(null);
+				firstLoad = AppContext.Load(null) == false;
 			}
 			catch (Exception) {
 				// ignore loading exception
+				firstLoad = true;
 			}
+			_MainMenu.ScaleIcons(16);
 			Text = Constants.AppName + " [" + Application.ProductVersion + "]";
 			MinimumSize = Size;
-			StartPosition = FormStartPosition.CenterScreen;
 			AllowDrop = true;
 			DragEnter += (s, args) => args.FeedbackDragFileOver(Constants.FileExtensions.Pdf);
 			DragDrop += (s, args) => OpenFiles(args.DropFileOver(Constants.FileExtensions.Pdf));
+			FormClosed += MainForm_FormClosed;
 
+			AppContext.WindowStatus.Position(this);
 			SetupCustomizeToolbar();
-			_GeneralToolbar.Visible = AppContext.Toolbar.ShowGeneralToolbar;
+			if (_GeneralToolbar.Visible = AppContext.Toolbar.ShowGeneralToolbar) {
+				ScaleToolbar();
+			}
 
 			_OpenPdfDialog.DefaultExt = Constants.FileExtensions.Pdf;
 			_OpenPdfDialog.Filter = Constants.FileExtensions.PdfFilter;
@@ -266,7 +243,9 @@ namespace PDFPatcher
 			_LogControl.VisibleChanged += (s, args) => _FunctionContainer.Visible = !_LogControl.Visible;
 			_OpenConfigDialog.FileName = _SaveConfigDialog.FileName = Constants.AppName + "配置文件" + Constants.FileExtensions.Json;
 			_OpenConfigDialog.Filter = _SaveConfigDialog.Filter = Constants.FileExtensions.JsonFilter;
+			_FunctionContainer.Font = new Font(SystemFonts.CaptionFont.FontFamily.Name, 9);
 			_FunctionContainer.ImageList = new ImageList();
+			_FunctionContainer.DisplayStyleProvider.SelectedTextStyle = FontStyle.Bold;
 			_FunctionContainer.AllowDrop = true;
 			_FunctionContainer.MouseClick += (s, args) => {
 				if (args.Button == MouseButtons.Middle) { ClickCloseTab(args); }
@@ -301,6 +280,9 @@ namespace PDFPatcher
 			}
 
 			SelectFunctionList(Function.FrontPage);
+			if (firstLoad) {
+				SelectFunctionList(Function.About);
+			}
 
 			_GeneralToolbar.ItemClicked += MenuCommand;
 			if (AppContext.CheckUpdateDate < DateTime.Today) {
@@ -369,8 +351,7 @@ namespace PDFPatcher
 			var ci = e.ClickedItem;
 			var t = ci.Tag as string;
 			if (String.IsNullOrEmpty(t) == false) {
-				var func = (Function)Enum.Parse(typeof(Function), t);
-				SelectFunctionList(func);
+				SelectFunctionList((Function)Enum.Parse(typeof(Function), t));
 				return;
 			}
 			ci.HidePopupMenu();
@@ -401,7 +382,7 @@ namespace PDFPatcher
 				SetupCustomizeToolbar();
 			}
 			else if (commandName == Commands.SaveOptions && _SaveConfigDialog.ShowDialog() == DialogResult.OK) {
-				AppContext.Save(_SaveConfigDialog.FileName, false);
+				AppContext.Save(_SaveConfigDialog.FileName, false, false);
 			}
 			else if (commandName == Commands.LogWindow) {
 				ShowLogControl();
@@ -427,7 +408,9 @@ namespace PDFPatcher
 			}
 			else if (commandName == Commands.ShowGeneralToolbar) {
 				_FunctionContainer.SuspendLayout();
-				_GeneralToolbar.Visible = AppContext.Toolbar.ShowGeneralToolbar = !AppContext.Toolbar.ShowGeneralToolbar;
+				if (_GeneralToolbar.Visible = AppContext.Toolbar.ShowGeneralToolbar = !AppContext.Toolbar.ShowGeneralToolbar) {
+					ScaleToolbar();
+				}
 				_FunctionContainer.PerformLayout();
 			}
 			else if (commandName == Commands.Exit) {
@@ -456,6 +439,10 @@ namespace PDFPatcher
 			}
 		}
 
+		void ScaleToolbar() {
+			_GeneralToolbar.ScaleIcons(16);
+		}
+
 		DialogResult ShowDialogWindow(Form window) {
 			using (var f = window) {
 				f.StartPosition = FormStartPosition.CenterParent;
@@ -469,7 +456,7 @@ namespace PDFPatcher
 		}
 
 		internal void OpenFileWithEditor(string path) {
-			SelectFunctionList(Function.BookmarkEditor);
+			SelectFunctionList(Function.Editor);
 			var c = GetActiveFunctionControl() as EditorControl;
 			if (String.IsNullOrEmpty(path)) {
 				c.ExecuteCommand(Commands.Open);
@@ -509,7 +496,7 @@ namespace PDFPatcher
 					}
 				}
 				var t = new TabPage(c.FunctionName) {
-					Font = System.Drawing.SystemFonts.SmallCaptionFont
+					Font = SystemFonts.SmallCaptionFont
 				};
 				var im = _FunctionContainer.ImageList.Images;
 				for (int i = im.Count - 1; i >= 0; i--) {
@@ -528,14 +515,10 @@ namespace PDFPatcher
 				c.Dock = DockStyle.Fill;
 				t.Controls.Add(c);
 				_FunctionContainer.SelectedTab = t;
-				AcceptButton = c.DefaultButton;
-
 				if (String.IsNullOrEmpty(p) == false) {
 					c.ExecuteCommand(Commands.OpenFile, p);
 				}
-
-				//c.HideOnClose = true;
-				//c.Show (this._DockPanel);
+				AcceptButton = c.DefaultButton;
 			}
 		}
 
@@ -561,12 +544,7 @@ namespace PDFPatcher
 		}
 
 		void MainForm_FormClosed(object sender, FormClosedEventArgs e) {
-			try {
-				AppContext.Save(null, true);
-			}
-			catch (Exception) {
-				// ignore error
-			}
+			AppContext.Save(null, true, true);
 		}
 
 		void HideLogControl() {

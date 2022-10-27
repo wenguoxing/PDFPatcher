@@ -161,11 +161,11 @@ namespace MuPdfSharp
 			if (_TextPage != null) {
 				return;
 			}
-			var vb = VisualBound;
-			var text = new TextPageHandle(_context, vb);
+			var b = Bound;
+			var text = new TextPageHandle(_context, b);
 			try {
 				using (var dev = new DeviceHandle(_context, text)) {
-					NativeMethods.RunDisplayList(_context, GetDisplayList(), dev, Matrix.Identity, vb, ref _cookie);
+					NativeMethods.RunDisplayList(_context, GetDisplayList(), dev, Matrix.Identity, b, ref _cookie);
 					dev.EndOperations();
 				}
 				_TextPage = new MuTextPage(text);
@@ -302,7 +302,6 @@ namespace MuPdfSharp
 
 		/// <summary>释放由 MuPdfPage 占用的资源。</summary>
 		/// <param name="disposing">是否手动释放托管资源。</param>
-		[System.Diagnostics.CodeAnalysis.SuppressMessage("Microsoft.Usage", "CA2213:DisposableFieldsShouldBeDisposed", MessageId = "_page")]
 		void Dispose(bool disposing) {
 			if (!disposed) {
 				if (disposing) {

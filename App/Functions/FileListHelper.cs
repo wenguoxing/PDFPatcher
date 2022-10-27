@@ -94,6 +94,7 @@ namespace PDFPatcher.Functions
 					case "主题": SetupSubjectColumn(item); break;
 					case "关键词": SetupKeywordsColumn(item); break;
 					case "页数": SetupPageCountColumn(item); break;
+					case "修改时间": SetupFileTimeColumn(item); break;
 				}
 			}
 		}
@@ -122,9 +123,7 @@ namespace PDFPatcher.Functions
 			});
 		}
 		static void SetupPageCountColumn(OLVColumn column) {
-			column.AsTyped<SourceItem.Pdf>(c => {
-				c.AspectGetter = o => o.PageCount.ToText();
-			});
+			column.AsTyped<SourceItem.Pdf>(c => c.AspectGetter = o => o.PageCount.ToText());
 		}
 		static void SetupFileNameColumn(OLVColumn column) {
 			column.AsTyped<SourceItem.Pdf>(c => {
@@ -133,9 +132,11 @@ namespace PDFPatcher.Functions
 			});
 		}
 		static void SetupFolderNameColumn(OLVColumn column) {
-			column.AsTyped<SourceItem>(c => {
-				c.AspectGetter = o => o.Type != SourceItem.ItemType.Empty ? o.FolderName : String.Empty;
-			});
+			column.AsTyped<SourceItem>(c => c.AspectGetter = o => o.Type != SourceItem.ItemType.Empty ? o.FolderName : String.Empty);
+		}
+		static void SetupFileTimeColumn(OLVColumn column) {
+			column.AsTyped<SourceItem>(c => c.AspectGetter = o => o.FileTime);
+			column.AspectToStringConverter = o => ((DateTime)o).ToText();
 		}
 
 		public void SetupHotkeys() {
@@ -168,7 +169,7 @@ namespace PDFPatcher.Functions
 					}
 					break;
 				case "_Copy":
-					var sb = new StringBuilder();
+					var sb = StringBuilderCache.Acquire();
 					foreach (SourceItem.Pdf item in GetSourceItems<SourceItem>(true)) {
 						sb.AppendLine(String.Join("\t", new string[] {
 							item.FilePath.ToString(),
@@ -180,7 +181,10 @@ namespace PDFPatcher.Functions
 						}));
 					}
 					if (sb.Length > 0) {
-						Clipboard.SetText(sb.ToString());
+						Clipboard.SetText(StringBuilderCache.GetStringAndRelease(sb));
+					}
+					else {
+						StringBuilderCache.Release(sb);
 					}
 					break;
 				case Commands.SelectAllItems:

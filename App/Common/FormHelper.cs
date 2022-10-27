@@ -35,9 +35,17 @@ namespace PDFPatcher.Common
 		public static Point Transpose(this Point point, Point transpose) {
 			return new Point(point.X + transpose.X, point.Y + transpose.Y);
 		}
-
+		public static Size Scale(this Size size, float scale) {
+			return new Size((int)(size.Width * scale), (int)(size.Height * scale));
+		}
+		public static void OnFirstLoad(this Form form, Action handler) {
+			new FormEventHandler(form, handler);
+		}
 		public static void SetIcon(this Form form, Bitmap bitmap) {
 			form.Icon = Icon.FromHandle(bitmap.GetHicon());
+		}
+		public static void OnFirstLoad(this UserControl control, Action handler) {
+			new UserControlLoadHandler(control, handler);
 		}
 		public static ProgressBar SetValue(this ProgressBar control, int value) {
 			control.Value = value < control.Minimum ? control.Minimum
@@ -49,6 +57,9 @@ namespace PDFPatcher.Common
 			return box.SetValue((decimal)value);
 		}
 		public static NumericUpDown SetValue(this NumericUpDown box, float value) {
+			return box.SetValue((decimal)value);
+		}
+		public static NumericUpDown SetValue(this NumericUpDown box, double value) {
 			return box.SetValue((decimal)value);
 		}
 		public static NumericUpDown SetValue(this NumericUpDown box, decimal value) {
@@ -126,6 +137,37 @@ namespace PDFPatcher.Common
 			return toolStrip;
 		}
 
+		public static float GetDpiScale(this Control control) {
+			using (var g = control.CreateGraphics()) {
+				return g.DpiX / 96;
+			}
+		}
+
+		public static void ScaleColumnWidths(this ListView listView, float scale) {
+			foreach (ColumnHeader column in listView.Columns) {
+				column.Width = (int)(column.Width * scale);
+			}
+		}
+		public static void ScaleColumnWidths(this ListView listView) {
+			float scale = GetDpiScale(listView);
+			foreach (ColumnHeader column in listView.Columns) {
+				column.Width = (int)(column.Width * scale);
+			}
+		}
+
+		public static ToolStrip ScaleIcons(this ToolStrip toolStrip, int size) {
+			size = (int)(toolStrip.GetDpiScale() * size);
+			return toolStrip.ScaleIcons(new Size(size, size));
+		}
+		public static ToolStrip ScaleIcons(this ToolStrip toolStrip, Size size) {
+			toolStrip.SuspendLayout();
+			toolStrip.AutoSize = false;
+			toolStrip.ImageScalingSize = size;
+			toolStrip.ResumeLayout();
+			toolStrip.AutoSize = true;
+			return toolStrip;
+		}
+
 		internal static void InsertLinkedText(this RichTextBoxLinks.RichTextBoxEx textBox, string text) {
 			const int TokenLength = 2;
 			int p1 = text.IndexOf("<<");
@@ -178,8 +220,7 @@ namespace PDFPatcher.Common
 		}
 
 		public static void HidePopupMenu(this ToolStripItem item) {
-			var mi = item as ToolStripDropDownItem;
-			if (mi != null && mi.HasDropDownItems) {
+			if (item is ToolStripDropDownItem mi && mi.HasDropDownItems) {
 				return;
 			}
 			var oo = item.Owner as ToolStripDropDownMenu;
@@ -289,6 +330,37 @@ namespace PDFPatcher.Common
 				return Marshal.PtrToStringUni(((CopyDataStruct)Marshal.PtrToStructure(message.LParam, typeof(CopyDataStruct))).lpData);
 			}
 			return null;
+		}
+
+		sealed class FormEventHandler
+		{
+			readonly Form _Form;
+			readonly Action _Handler;
+
+			public FormEventHandler(Form form, Action handler) {
+				_Form = form;
+				_Handler = handler;
+				form.Load += OnLoadHandler;
+			}
+			public void OnLoadHandler(object s, EventArgs args) {
+				_Form.Load -= OnLoadHandler;
+				_Handler();
+			}
+		}
+		sealed class UserControlLoadHandler
+		{
+			readonly UserControl _Control;
+			readonly Action _Handler;
+
+			public UserControlLoadHandler(UserControl control, Action handler) {
+				_Control = control;
+				_Handler = handler;
+				control.Load += OnLoadHandler;
+			}
+			public void OnLoadHandler(object s, EventArgs args) {
+				_Control.Load -= OnLoadHandler;
+				_Handler();
+			}
 		}
 
 		static class NativeMethods

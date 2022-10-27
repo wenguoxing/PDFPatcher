@@ -159,8 +159,6 @@ namespace PDFPatcher.Processor
 		/// <summary>
 		/// 获取友好的 PdfName 文本。
 		/// </summary>
-		/// <param name="n"></param>
-		/// <returns></returns>
 		internal static string GetPdfFriendlyName(PdfName name) {
 			return (__PdfNameMap.ContainsKey(name) ? __PdfNameMap[name] : GetPdfNameString(name));
 		}
@@ -196,6 +194,11 @@ namespace PDFPatcher.Processor
 			return pages;
 		}
 
+		/// <summary>获取 <see cref="PdfWriter"/> 实际写出的页数。</summary>
+		public static int GetPageCount(this PdfWriter writer) {
+			return writer.PageEmpty ? writer.CurrentPageNumber - 1 : writer.CurrentPageNumber;
+		}
+
 		/// <summary>
 		/// 解析形如“D:20111021090818+08'00'”的日期格式。
 		/// </summary>
@@ -218,15 +221,6 @@ namespace PDFPatcher.Processor
 				return DateTimeOffset.MinValue;
 			}
 		}
-
-		//internal static int GetNumber (this PdfIndirectReference indirect) {
-		//    PdfDictionary pdfObj = (PdfDictionary)PdfReader.GetPdfObjectRelease (indirect);
-		//    if (pdfObj.Contains (PdfName.TYPE) && pdfObj.Get (PdfName.TYPE).Equals (PdfName.PAGES) && pdfObj.Contains (PdfName.KIDS)) {
-		//        PdfArray kids = (PdfArray)pdfObj.Get (PdfName.KIDS);
-		//        indirect = (PdfIndirectReference)kids.ArrayList[0];
-		//    }
-		//    return indirect.Number;
-		//}
 
 		/// <summary>
 		/// 获取解码后的 PDF 名称字符串。
@@ -267,25 +261,20 @@ namespace PDFPatcher.Processor
 		/// <param name="page">页面字典。</param>
 		/// <returns>页面的可见边框。</returns>
 		internal static iTextSharp.text.Rectangle GetPageVisibleRectangle(this PdfDictionary page) {
-			if (page == null) {
-				return null;
-			}
 			PdfArray box;
-			var c = new float[4];
-			if ((page.Contains(PdfName.CROPBOX) && (box = page.GetAsArray(PdfName.CROPBOX)) != null && box.Size == 4)
-				|| (page.Contains(PdfName.MEDIABOX) && (box = page.GetAsArray(PdfName.MEDIABOX)) != null && box.Size == 4)) {
-				for (int i = 0; i < 4; i++) {
-					c[i] = box.GetAsNumber(i).FloatValue;
-				}
-				var rect = new iTextSharp.text.Rectangle(c[0], c[1], c[2], c[3]);
-				var r = page.GetAsNumber(PdfName.ROTATE);
-				if (r != null) {
-					return new iTextSharp.text.Rectangle(c[0], c[1], c[2], c[3], r.IntValue);
-				}
-				return rect;
-			}
-			else
+			if (page == null
+				|| ((box = page.GetAsArray(PdfName.CROPBOX)) == null || box.Size != 4)
+					&& ((box = page.GetAsArray(PdfName.MEDIABOX)) == null || box.Size != 4)) {
 				return null;
+			}
+			var c = new float[4];
+			for (int i = 0; i < 4; i++) {
+				c[i] = box.GetAsNumber(i).FloatValue;
+			}
+			var r = page.GetAsNumber(PdfName.ROTATE);
+			return r != null && r.IntValue != 0 && r.IntValue != 180
+				? new iTextSharp.text.Rectangle(c[0], c[1], c[2], c[3], r.IntValue).Rotate()
+				: new iTextSharp.text.Rectangle(c[0], c[1], c[2], c[3]);
 		}
 
 		internal static void ClearPageLinks(this PdfReader r) {
@@ -346,14 +335,14 @@ namespace PDFPatcher.Processor
 				marks.Add(value.Length + 1);
 			}
 			if (marks.Count > 1) {
-				var sb = new StringBuilder();
+				var sb = StringBuilderCache.Acquire();
 				for (int i = 1; i < marks.Count; i++) {
 					if (i > 1) {
 						sb.Append(' ');
 					}
 					sb.Append(value, marks[i - 1], marks[i] - 1 - marks[i - 1]);
 				}
-				return sb.ToString();
+				return StringBuilderCache.GetStringAndRelease(sb);
 			}
 			else {
 				return value;
@@ -365,7 +354,7 @@ namespace PDFPatcher.Processor
 		}
 
 		internal static string GetArrayString(ICollection<PdfObject> array) {
-			var sb = new StringBuilder();
+			var sb = StringBuilderCache.Acquire();
 			int k = 0;
 			foreach (var item in array) {
 				if (++k > 1) {
@@ -383,11 +372,11 @@ namespace PDFPatcher.Processor
 					sb.Append(item);
 				}
 			}
-			return sb.ToString();
+			return StringBuilderCache.GetStringAndRelease(sb);
 		}
 
 		internal static string GetNumericArrayString(PdfArray a, float unitFactor) {
-			var sb = new StringBuilder();
+			var sb = StringBuilderCache.Acquire();
 			for (int k = 0; k < a.ArrayList.Count; k++) {
 				if (k != 0) {
 					sb.Append(' ');
@@ -402,7 +391,7 @@ namespace PDFPatcher.Processor
 					sb.Append(o.Type == PdfObject.NUMBER ? UnitConverter.FromPoint(o.ToString(), unitFactor) : o.ToString());
 				}
 			}
-			return sb.ToString();
+			return StringBuilderCache.GetStringAndRelease(sb);
 		}
 
 		internal static void Put(this PdfDictionary dict, PdfName key, string value) {
